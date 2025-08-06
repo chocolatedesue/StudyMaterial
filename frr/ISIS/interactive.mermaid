@@ -1,0 +1,72 @@
+sequenceDiagram
+    participant Main as ISIS Main
+    participant Area as ISIS Area
+    participant Circuit as ISIS Circuit
+    participant PDU as PDU Handler
+    participant LSP as LSP Manager
+    participant SPF as SPF Engine
+    participant Zebra as Zebra Daemon
+    participant Network as Network Layer
+
+    Note over Main: ISIS模块启动流程
+    Main->>Main: isis_master_init()
+    Main->>Main: isis_init()
+    Main->>Main: isis_circuit_init()
+    Main->>Main: isis_spf_init()
+    Main->>Zebra: isis_zebra_init()
+    Main->>Main: frr_run(master)
+
+    Note over Area,Circuit: 接口激活流程
+    Area->>Circuit: isis_circuit_create()
+    Circuit->>Circuit: circuit_commence_level()
+    Circuit->>Network: setup socket & timers
+    Circuit->>PDU: start hello timer
+
+    Note over Network,PDU: 数据包接收处理
+    Network->>PDU: isis_receive()
+    PDU->>PDU: isis_handle_pdu()
+    
+    alt Hello PDU
+        PDU->>Circuit: process_hello()
+        Circuit->>Circuit: isis_adj_lookup()
+        Circuit->>Circuit: isis_new_adj() or update
+        Circuit->>LSP: trigger LSP regeneration
+    else LSP PDU
+        PDU->>LSP: process_lsp()
+        LSP->>LSP: lsp_insert()
+        LSP->>SPF: trigger SPF calculation
+    else SNP PDU
+        PDU->>LSP: process_snp()
+        LSP->>LSP: synchronize LSDB
+    end
+
+    Note over LSP: LSP生成和传播
+    LSP->>LSP: lsp_regenerate_schedule()
+    LSP->>LSP: lsp_build()
+    LSP->>LSP: lsp_flood()
+    LSP->>Network: send LSP to neighbors
+
+    Note over SPF: SPF计算流程
+    SPF->>SPF: isis_run_spf()
+    SPF->>SPF: init_spt()
+    SPF->>SPF: isis_spf_add_root()
+    SPF->>SPF: isis_spf_loop()
+    SPF->>SPF: isis_route_create()
+    SPF->>Zebra: isis_zebra_route_add_route()
+
+    Note over Zebra: 路由安装
+    Zebra->>Zebra: install routes in RIB
+    Zebra->>Zebra: install routes in FIB
+
+    Note over Circuit,Area: 定时器事件
+    loop Timer Events
+        Circuit->>PDU: send_hello()
+        LSP->>LSP: lsp_refresh()
+        SPF->>SPF: spf_timer_expire()
+        Circuit->>Circuit: adjacency_expire_check()
+    end
+
+    Note over Area: 事件驱动更新
+    Area->>LSP: circuit state change
+    Area->>SPF: adjacency change
+    Area->>Zebra: route update
