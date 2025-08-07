@@ -1,6 +1,8 @@
 
 uv run clear_logs.py ./ospfv3_torus10x10_test/etc/ --yes
 
+clab deploy -t ospfv3_torus10x10_test/ospfv3_torus10x10.clab.yaml
+
 uv run setup/generate_ospfv3_functional.py torus 15 --yes
 
 bash auto.sh clab-ospfv3-torus10x10 2
